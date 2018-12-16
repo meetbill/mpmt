@@ -8,13 +8,19 @@ import threading
 import blog
 import Queue
 
-debug=False
+debug = False
 logpath = "./log/mpms.log"
-_logger = blog.Log(logpath,level="debug",logid="mpmt",is_console=debug, mbs=5, count=5)
+_logger = blog.Log(
+    logpath,
+    level="debug",
+    logid="mpmt",
+    is_console=debug,
+    mbs=5,
+    count=5)
 
 try:
     from typing import Any, Union
-except:
+except BaseException:
     pass
 
 VERSION = (2, 0, 0, 4)
@@ -28,19 +34,21 @@ def _worker_container(task_q, result_q, func):
     """
     _th_name = threading.current_thread().name
 
-    _logger.debug('[W++] mpms worker %s starting'% _th_name)
+    _logger.debug('[W++] mpms worker %s starting' % _th_name)
 
     while True:
         taskid, args, kwargs = task_q.get()
         # _logger.debug("mpms worker %s got taskid:%s", _th_name, taskid)
 
         if taskid is StopIteration:
-            _logger.debug("[W++] mpms worker %s got stop signal"%_th_name)
+            _logger.debug("[W++] mpms worker %s got stop signal" % _th_name)
             break
         try:
             result = func(*args, **kwargs)
         except Exception as e:
-            _logger.error("[W++] Unhandled error %s in worker thread, taskid: %s"%(e, taskid))
+            _logger.error(
+                "[W++] Unhandled error %s in worker thread, taskid: %s" %
+                (e, taskid))
             if result_q is not None:
                 result_q.put_nowait((taskid, e))
         else:
@@ -59,8 +67,13 @@ def _slaver(task_q, result_q, threads, func):
         threads (int)
         func (Callable)
     """
-    _process_name = "{}(PID:{})".format(multiprocessing.current_process().name,multiprocessing.current_process().pid, )
-    _logger.debug("[W] mpms subprocess %s start. threads:%s"% (_process_name, threads))
+    _process_name = "{}(PID:{})".format(
+        multiprocessing.current_process().name,
+        multiprocessing.current_process().pid,
+    )
+    _logger.debug(
+        "[W] mpms subprocess %s start. threads:%s" %
+        (_process_name, threads))
 
     pool = []
     for i in range(threads):
@@ -76,7 +89,7 @@ def _slaver(task_q, result_q, threads, func):
     for th in pool:
         th.join()
 
-    _logger.debug("[W] mpms subprocess %s exiting"% _process_name)
+    _logger.debug("[W] mpms subprocess %s exiting" % _process_name)
 
 
 def get_cpu_count():
@@ -85,8 +98,9 @@ def get_cpu_count():
             return os.cpu_count()
         else:
             return multiprocessing.cpu_count()
-    except:
+    except BaseException:
         return 0
+
 
 class MPMT(object):
     """
@@ -98,10 +112,11 @@ class MPMT(object):
         total_count (int): 总任务数
         finish_count (int): 已完成的任务数
     """
+
     def __init__(
             self,
             worker,
-            processes=None, 
+            processes=None,
             threads=2,
             task_queue_maxsize=-1,
     ):
@@ -141,32 +156,40 @@ class MPMT(object):
         self.worker_processes_pool = []
         self.running_tasks = {}
         self.result = []
-        _logger.debug("[version]:%s"%(VERSION_STR))
+        _logger.debug("[version]:%s" % (VERSION_STR))
 
     def start(self):
         if self.worker_processes_pool:
             raise RuntimeError('You can only start ONCE!')
 
         if self.multi:
-            _logger.debug("[start] [worker-multi] mpms starting worker subprocess")
+            _logger.debug(
+                "[start] [worker-multi] mpms starting worker subprocess")
             for i in range(self.processes_count):
                 p = multiprocessing.Process(
                     target=_slaver,
-                    args=(self.task_q, self.result_q,self.threads_count, self.worker),
+                    args=(
+                        self.task_q,
+                        self.result_q,
+                        self.threads_count,
+                        self.worker),
                     name="mpms-{}".format(i + 1)
                 )
                 p.daemon = True
                 p.start()
                 self.worker_processes_pool.append(p)
         else:
-            _logger.debug("[start] [worker-nil] mpms starting worker subprocess")
+            _logger.debug(
+                "[start] [worker-nil] mpms starting worker subprocess")
         if self.collector is not None:
             _logger.debug("[start] mpms starting collector thread")
-            self.collector_thread = threading.Thread(target=self._collector_container, name='mpms-collector')
+            self.collector_thread = threading.Thread(
+                target=self._collector_container, name='mpms-collector')
             self.collector_thread.daemon = True
             self.collector_thread.start()
         else:
-            _logger.debug("[start] mpms no collector given, skip collector thread")
+            _logger.debug(
+                "[start] mpms no collector given, skip collector thread")
 
     def put(self, *args, **kwargs):
         """
@@ -199,9 +222,15 @@ class MPMT(object):
         if self.multi:
             for p in self.worker_processes_pool:  # type: multiprocessing.Process
                 p.join()
-                _logger.debug("[join] [work-multi] mpms subprocess %s %s closed"%( p.name, p.pid))
+                _logger.debug(
+                    "[join] [work-multi] mpms subprocess %s %s closed" %
+                    (p.name, p.pid))
         else:
-            _slaver(self.task_q, self.result_q,self.threads_count, self.worker)
+            _slaver(
+                self.task_q,
+                self.result_q,
+                self.threads_count,
+                self.worker)
             _logger.debug("[join] [work-nil] mpms closed")
         _logger.debug("[join] mpms all worker completed")
 
@@ -230,12 +259,16 @@ class MPMT(object):
             self.running_tasks.pop(taskid)
             self.taskid = taskid
             self.finish_count += 1
-            _logger.debug("[C] mpms collector finish [%d/%d]" %(self.finish_count,self.total_count))
+            _logger.debug(
+                "[C] mpms collector finish [%d/%d]" %
+                (self.finish_count, self.total_count))
             try:
                 self.result.append(result)
-            except:
+            except BaseException:
                 # 为了继续运行, 不抛错
-                _logger.error("[C] an error occurs in collector, task: %s"%taskid)
+                _logger.error(
+                    "[C] an error occurs in collector, task: %s" %
+                    taskid)
 
     def close(self):
         """
@@ -246,5 +279,6 @@ class MPMT(object):
         for i in range(self.processes_count * self.threads_count):
             self.task_q.put((StopIteration, (), {}))
         self.task_queue_closed = True
+
     def get_result(self):
         return self.result
